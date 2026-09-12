@@ -4,7 +4,7 @@ class_name GaussElim extends RefCounted
 ## Constant used to determine, if a number is close enought to zero. It is used mainly to avert division by small numbers.
 const ROUND: float = 1.0e-8
 
-## Applies Gaussian elimination on the system(s) [param Ax = b], [b][color=red]changing[/color][/b] [param A] and [param b] in the process. [br]
+## Applies Gaussian elimination on the system(s) [param Ax = b], [b][color=red]CHANGING[/color][/b] [param A] and [param b] in the process. [br]
 ## If [param A] and [param b] do not have the same amount of rows, then it pushes an error and returns an empty [Matrix]. [br]
 ## If the system(s) is solvable, then it returns a new instance of [Matrix], which solves (all) the system(s), i.e., Ax = b.
 ## If some of the systems are usolvable, then it pushes an error and returns a [code]1[/code] by [code]b.M + 1[/code] [Matrix], 
@@ -40,10 +40,10 @@ static func solve(A: Matrix, b: Matrix) -> Matrix:
 	# Solve the system in row echelon form by backwar substitution.
 	var x: Matrix = Matrix.new(A.M, b.M)
 	for j_eq in range(b.M):
-		var iter: Array = pivots.duplicate()
+		var iter: Array = range(pivots.size())
 		iter.reverse()
 		for i in iter:
-			_row_substitution(A, b, x, i, j_eq, pivots[i])
+			_row_substitution(A, b, x, i, pivots[i], j_eq)
 	return x
 
 ## Auxiliary private function. [br]
@@ -102,10 +102,10 @@ static func _is_solvable(A: Matrix, b: Matrix, pivot_count: int) -> Array[float]
 ## [param A] must be in row echelon form with ones as pivots. [br]
 ## [param x_so_far] must have all the parts of the solution obtained from the [b]backward[/b] substitution before the [param i]-th one.
 ## Rows corresponding to pivots must start as [code]0[/code], but all the other can start as anything. [br]
+## [param j_pivot] is the index of the column of [param A], in which is the [b]pivot[/b] of the [param i]-th row. [br]
 ## [param j_eq] is the column of [param b] and [param x_so_far] with which we are currently working.
-## In other words, it is the index of the system we are currently solving. [br]
-## [param j_pivot] is the index of the column of [param A], in which is the [b]pivot[/b] of the [param i]-th row.
-static func _row_substitution(A: Matrix, b: Matrix, x_so_far: Matrix, i: int, j_eq: int, j_pivot: int):
+## In other words, it is the index of the system we are currently solving.
+static func _row_substitution(A: Matrix, b: Matrix, x_so_far: Matrix, i: int, j_pivot: int, j_eq: int):
 	var x: float = b.element(i, j_eq)
 	for j in range(j_pivot, x_so_far.N):
 		x -= x_so_far.element(j, j_eq) * A.element(i,j)

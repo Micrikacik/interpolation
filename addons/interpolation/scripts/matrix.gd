@@ -183,6 +183,15 @@ static func matrix_from_array_transposed(array: Array[Array]) -> Matrix:
 	result_matrix._data = data
 	return result_matrix
 
+## Creates a new instance of [Matrix], which represents rotation by [param angle] (counterclockwise in Godot). [br]
+static func matrix_from_rotation(angle: float) -> Matrix:
+	var result_matrix: Matrix = Matrix.new(2, 2)
+	result_matrix.insert(0, 0, cos(angle))
+	result_matrix.insert(1, 0, sin(angle))
+	result_matrix.insert(0, 1, -sin(angle))
+	result_matrix.insert(1, 1, cos(angle))
+	return result_matrix
+
 #endregion
 
 #region Elememt acces
@@ -327,7 +336,7 @@ func append_columns(matrix: Matrix) -> Matrix:
 
 ## Returns a new instance of a [Matrix], which is a matrix product of the matrices [param matrix_L] times [param matrix_R], in this order. [br]
 ## If the Sizes of the matrices are not suitable for matrix multiplication, then it pushes an error and returns an empty [Matrix]. 
-static func Product(matrix_L: Matrix, matrix_R: Matrix) -> Matrix:
+static func product(matrix_L: Matrix, matrix_R: Matrix) -> Matrix:
 	if matrix_L._m != matrix_R._n:
 		push_error("Sizes of the matrices are not suitable for multiplication.")
 		return Matrix.new()
@@ -339,7 +348,7 @@ static func Product(matrix_L: Matrix, matrix_R: Matrix) -> Matrix:
 	return result_matrix
 
 ## Returns a new instance of a [Matrix], which is a transposition of the input [param matrix].
-static func Transposition(matrix: Matrix) -> Matrix:
+static func transposition(matrix: Matrix) -> Matrix:
 	var result_matrix: Matrix = Matrix.new(matrix._m,matrix._n)
 	for i in range(matrix._n):
 		for j in range(matrix._m):

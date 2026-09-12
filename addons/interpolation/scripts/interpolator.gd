@@ -1,6 +1,12 @@
 class_name Interpolator extends RefCounted
 ## Class tht implements some point-wise interpolation methods and useful functions to modify it afterwords.
 
+## Fraction (number between 0 and 1) used in [method Interpolator.bend_dirs_2D]
+const BEND_FRACTION: float = 0.2
+## Exponent used in the default bend function 
+## (i.e. in [method Interpolator.bend_function] & [method Interpolator.bend_func_derivative]).
+const EXPONENT: float = 2
+
 #region Interpolation
 
 ## Calculates the coefficients ([Vector2]) for the [param functions] so that the resulting linear combination of [param functions] interpolates the [param x_values] at [param t_points].
@@ -36,7 +42,9 @@ static func general_2D(t_points: Array[float], x_values: Array[Vector2], functio
 
 ## Calculates the coefficients ([Vector2]) for the [param functions] so that the resulting linear combination of [param functions] interpolates the [param x_values] at [param t_points].
 ## Depending on the number of conditions apropriate interpolation method is used. 
-## Furthermore the derivatives at the first and the last values in [param t_points] are opposite.
+## Furthermore the derivatives at the first and the last values in [param t_points] are opposite. 
+## NOTE: This does not use the [method Interpolator.bend_function], but the given [param functions], 
+## hence the results might be a bit wild.
 ## Returns the coefficients as [Array][lb][Vector2][rb]. [br]
 ## [param functions] should be an [Array] of continuously differentiable functions from some closed interval (which contains all the time points in [param t_points]) to the real numbers. [br]
 ## [param derivatives] should be the continuous derivatives of [param functions]. [br]
@@ -76,13 +84,13 @@ static func precise_2D_w_end_dirs(t_points: Array[float], x_values: Array[Vector
 			return _square_system_2D(A, b)
 		# NOTE: this part functions only in theory, in pratice the results are bad.
 		#1: # there is more conditions than variables - do constrained least squares (CLS)
-			#var AT: Matrix = Matrix.Transposition(A)
-			#var ATA: Matrix = Matrix.Product(AT,A)
-			#var CT: Matrix = Matrix.Transposition(C)
+			#var AT: Matrix = Matrix.transposition(A)
+			#var ATA: Matrix = Matrix.product(AT,A)
+			#var CT: Matrix = Matrix.transposition(C)
 			#ATA.append_rows(C)
 			#CT.append_rows(Matrix.new(1,1,Matrix.MatrixType.ZERO))
 			#A = ATA.append_columns(CT)
-			#var ATb = Matrix.Product(AT,b)
+			#var ATb = Matrix.product(AT,b)
 			#b = ATb.append_rows(Matrix.new(1,b.M,Matrix.MatrixType.ZERO))
 			#return _overdetermined_system_2D(A, b).slice(0,-1)
 		_: 
@@ -92,50 +100,91 @@ static func precise_2D_w_end_dirs(t_points: Array[float], x_values: Array[Vector
 
 #region Bending end directions
 
-static func bend_end_dirs_2D_w_bend_func(directions: Array[Vector2], bend_func_derivs: Array[float]) -> Array[Vector2]:
-	return _bend_2D(directions[0], directions[1], bend_func_derivs[0], bend_func_derivs[1])
+## Calculates a bend vector function and its derivative, returning them in an array in that order,
+## so that when the bend function is added to a vector function, which has a derivative [param derivative], 
+## the resulting vector function has its derivatives at times [param interval.x] and [param interval.y] be
+## the same vector, but rotated by [param angle]. [br]
+## NOTE: [param derivative] must be a function from R to R^2. [br]
+## NOTE: [param interval] can have second value lower than the first.
+static func bend_dirs_2D(derivative: Callable, interval: Vector2, angle: float = PI, bend_fraction: float = BEND_FRACTION) -> Array[Callable]:
+	var int_dir_frac: float = (interval.y - interval.x) * bend_fraction
+	var bend_interval_1: Vector2 = Vector2(interval.x + int_dir_frac, interval.x)
+	var bend_interval_2: Vector2 = Vector2(interval.y - int_dir_frac, interval.y)
+	return int_bend_dirs_2D(derivative, bend_interval_1, bend_interval_2, angle)
 
-static func bend_end_dirs_2D(start_bend_int: Vector2, end_bend_int: Vector2, directions: Array[Vector2]) -> Array[Vector2]:
-	var bend_func_derivs: Array[float] = [bend_func_deriv_affine_trans(start_bend_int[1], start_bend_int), \
-											bend_func_deriv_affine_trans(end_bend_int[1], end_bend_int)]
-	return bend_end_dirs_2D_w_bend_func(directions, bend_func_derivs)
+## Calculates a bend vector function and its derivative, returning them in an array in that order,
+## so that when the bend function is added to a vector function, which has a derivative [param derivative], 
+## the resulting vector function has its derivatives at times [param bend_interval_1.y] and [param bend_interval_2.y] be
+## the same vector, but rotated by [param angle]. [br]
+## NOTE: [param derivative] must be a function from R to R^2. [br]
+## NOTE: [param bend_interval_1] and [param bend_interval_2] can have second value lower than the first.
+## The bend function will have zero derivative at the first value and non-zero at the second.
+static func int_bend_dirs_2D(derivative: Callable, bend_interval_1: Vector2, bend_interval_2: Vector2, angle: float = PI) -> Array[Callable]:
+	var bend_func_1: Callable = make_bend_func_on_int(bend_interval_1)
+	var bend_func_2: Callable = make_bend_func_on_int(bend_interval_2)
+	var bend_func_deriv_1: Callable = make_bend_func_deriv_on_int(bend_interval_1)
+	var bend_func_deriv_2: Callable = make_bend_func_deriv_on_int(bend_interval_2)
+	var coefficients: Array[Vector2] = custom_bend_dirs_2D(derivative, \
+		bend_func_deriv_1, bend_func_deriv_2, bend_interval_1[1], bend_interval_2[1], angle)
+	var result: Array[Callable] = []
+	result.append(func (t): return coefficients[0] * bend_func_1.call(t) + coefficients[1] * bend_func_2.call(t))
+	result.append(func (t): return coefficients[0] * bend_func_deriv_1.call(t) + coefficients[1] * bend_func_deriv_2.call(t))
+	return result
 
-## Private auxiliary function. [br]
+## Calculates two [Vector2] as "coefficients" for the two scalar bend functions, 
+## whose derivatives are [param bend_derivative_1] and [param bend_derivative_2],
+## so that when the bend functions multiplied by the output vectors are added to a vector function,
+## which has a derivative [param derivative], the resulting vector function has
+## its derivatives at [param bend_t_1] and [param bend_t_2] be
+## the same vector, but rotated by [param angle]. [br]
+## Result vectors has minimal frobenius norm, i.e. 
+## [codeblock]
+## array[0].length_squared() + array[1].length_squared()
+## [/codeblock]
+## is minimal. [br]
+## NOTE: [param derivative] must be a function from R to R^2. [br]
+## NOTE: [param bend_derivative_1] and [param bend_derivative_2] must be a functions from R to R,
+## such that [code]bend_derivative_1.call(bend_t_2) == 0[/code] and [code]bend_derivative_2.call(bend_t_1) == 0[/code]
+static func custom_bend_dirs_2D(derivative: Callable, bend_derivative_1: Callable, bend_derivative_2: Callable, \
+			bend_t_1: float, bend_t_2: float, angle: float = PI) -> Array[Vector2]:
+	return bend_2D(derivative.call(bend_t_1), derivative.call(bend_t_2), \
+			bend_derivative_1.call(bend_t_1), bend_derivative_2.call(bend_t_2), angle)
+
 ## Calculates two [Vector2] and retuns them in an [code]array[/code], such that:
 ## [codeblock]
-## vector_1 + weight_1 * array[0] = - (vector_2 + weight_2 * array[1]) + offset_vector
+## (dir_1 + weight_1 * array[0]).rotated(angle) = dir_2 + weight_2 * array[1]
 ## [/codeblock]
 ## Result has minimal frobenius norm, i.e. 
 ## [codeblock]
 ## array[0].length_squared() + array[1].length_squared()
 ## [/codeblock]
 ## is minimal.
-static func _bend_2D(vector_1: Vector2, vector_2: Vector2, weight_1: float, weight_2: float, offset_vector: Vector2 = Vector2.ZERO) -> Array[Vector2]:
-	# NOTE: old code:
-	#var s: float = weight_1
-	#var e: float = weight_2
+static func bend_2D(dir_1: Vector2, dir_2: Vector2, weight_1: float, weight_2: float, angle: float = PI) -> Array[Vector2]:
+	# NOTE: old code
+	#var R: Matrix = Matrix.matrix_from_rotation(angle).times_scalar(weight_1)
 	#var A: Matrix = Matrix.matrix_from_array(Array(
-		#[Array([s, 0, e, 0], TYPE_FLOAT, "", null),
-		 #Array([0, s, 0, e], TYPE_FLOAT, "", null)] 
+	#	[Array([-weight_2,         0], TYPE_FLOAT, "", null),
+	#	 Array([        0, -weight_2], TYPE_FLOAT, "", null)] 
 	#, TYPE_ARRAY, "", null))
-	#var b: Matrix = Matrix.vector_from_Vector2(-vector_1-vector_2)
-	#var x = SystemSolvers.underdetermined_Gauss(A, b)
+	#A.append_columns(R) # first is v2, then v1
+	#var b: Matrix = Matrix.vector_from_Vector2(dir_2).minus(
+	#	Matrix.vector_from_Vector2(dir_1.rotated(angle)) # we just need to rotate it, no need to multiply by R
+	#)
+	#var x: Matrix = SystemSolvers.underdetermined_Gauss(A, b)
+	#var result: Array[Vector2] = []
+	#result.append(Vector2(x.element(2, 0), x.element(3, 0)))
+	#result.append(Vector2(x.element(0, 0), x.element(1, 0)))
 	
-	# NOTE: solving this means solving 	[s^2+e^2,       0]	[r_1]	=	[b_1]
-	#									[      0, s^2+e^2]	[r_2]	=	[b_2]
-	# and setting	xa_1	=	[s, 0]	
-	#				xa_2	=	[0, s]	[r_1]
-	#				xb_1	=	[e, 0]	[r_2]
-	#				xb_2	=	[0, e]	
+	# NOTE: solving this means solving 	[weight_2^2+weight_1^2,                      0]	[r_1]
+	#									[                     0, weight_2^2+weight_1^2]	[r_2]	= dir_2 - R dir_1
+	# and setting	xa	=	R^T r
+	#				xb	=	weight_2 r
 	
-	var r_vec: Vector2 = (offset_vector - (vector_1 + vector_2)) / (weight_1 * weight_1 + weight_2 * weight_2)
+	var r_vec: Vector2 = (dir_2 - dir_1.rotated(angle)) / (weight_1 * weight_1 + weight_2 * weight_2)
 	var result: Array[Vector2] = []
-	result.append(r_vec * weight_1)
-	result.append(r_vec * weight_2)
+	result.append(weight_1 * r_vec.rotated(-angle))
+	result.append(-weight_2 * r_vec)
 	return result
-
-## Exponent used in the default bend function (i.e. in [method Interpolator.bend_function] & [method Interpolator.bend_func_derivative]).
-const EXPONENT: float = 2
 
 ## The default bend function. [br]
 ## It is [code]0[/code] for [code]t <= 0[/code] and [code]t == 1[/code], positive for [code]0 < t < 1[/code] and negative for [code]1 < t[/code].
@@ -198,6 +247,12 @@ static func _affine_deriv_transform(derivative: float, from_interval: Vector2, t
 	var from_int_vec: float = from_interval[1] - from_interval[0]
 	var to_int_vec: float = to_interval[1] - to_interval[0]
 	return derivative * to_int_vec / from_int_vec
+
+static func make_bend_func_on_int(interval: Vector2) -> Callable:
+	return bend_func_affine_trans.bind(interval)
+
+static func make_bend_func_deriv_on_int(interval: Vector2) -> Callable:
+	return bend_func_affine_trans.bind(interval)
 
 #endregion
 
