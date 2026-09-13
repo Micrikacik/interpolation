@@ -2,7 +2,7 @@ class_name Interpolator extends RefCounted
 ## Class tht implements some point-wise interpolation methods and useful functions to modify it afterwords.
 
 ## Fraction (number between 0 and 1) used in [method Interpolator.bend_dirs_2D]
-const BEND_FRACTION: float = 0.2
+const BEND_FRACTION: float = 0.3
 ## Exponent used in the default bend function 
 ## (i.e. in [method Interpolator.bend_function] & [method Interpolator.bend_func_derivative]).
 const EXPONENT: float = 2
@@ -124,11 +124,11 @@ static func bend_func_2D_intervals(derivative: Callable, bend_interval_1: Vector
 	var bend_func_2: Callable = make_bend_func_on_int(bend_interval_2)
 	var bend_func_deriv_1: Callable = make_bend_func_deriv_on_int(bend_interval_1)
 	var bend_func_deriv_2: Callable = make_bend_func_deriv_on_int(bend_interval_2)
-	var coefficients: Array[Vector2] = bend_func_2D_custom(derivative, \
+	var coefficients: Array[Vector2] = bend_dirs_2D_from_derivs(derivative, \
 		bend_func_deriv_1, bend_func_deriv_2, bend_interval_1[1], bend_interval_2[1], angle)
 	var result: Array[Callable] = []
-	result.append(func (t): return coefficients[0] * bend_func_1.call(t) + coefficients[1] * bend_func_2.call(t))
-	result.append(func (t): return coefficients[0] * bend_func_deriv_1.call(t) + coefficients[1] * bend_func_deriv_2.call(t))
+	result.append(func bend(t): return coefficients[0] * bend_func_1.call(t) + coefficients[1] * bend_func_2.call(t))
+	result.append(func bend_deriv(t): return coefficients[0] * bend_func_deriv_1.call(t) + coefficients[1] * bend_func_deriv_2.call(t))
 	return result
 
 ## Calculates two [Vector2] as "coefficients" for the two scalar bend functions, 
@@ -145,7 +145,7 @@ static func bend_func_2D_intervals(derivative: Callable, bend_interval_1: Vector
 ## NOTE: [param derivative] must be a function from R to R^2. [br]
 ## NOTE: [param bend_derivative_1] and [param bend_derivative_2] must be a functions from R to R,
 ## such that [code]bend_derivative_1.call(bend_t_2) == 0[/code] and [code]bend_derivative_2.call(bend_t_1) == 0[/code]
-static func bend_func_2D_custom(derivative: Callable, bend_derivative_1: Callable, bend_derivative_2: Callable, \
+static func bend_dirs_2D_from_derivs(derivative: Callable, bend_derivative_1: Callable, bend_derivative_2: Callable, \
 			bend_t_1: float, bend_t_2: float, angle: float = PI) -> Array[Vector2]:
 	return bend_dirs_2D(derivative.call(bend_t_1), derivative.call(bend_t_2), \
 			bend_derivative_1.call(bend_t_1), bend_derivative_2.call(bend_t_2), angle)
@@ -252,7 +252,7 @@ static func make_bend_func_on_int(interval: Vector2) -> Callable:
 	return bend_func_affine_trans.bind(interval)
 
 static func make_bend_func_deriv_on_int(interval: Vector2) -> Callable:
-	return bend_func_affine_trans.bind(interval)
+	return bend_func_deriv_affine_trans.bind(interval)
 
 #endregion
 
