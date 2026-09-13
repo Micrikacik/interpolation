@@ -106,11 +106,11 @@ static func precise_2D_w_end_dirs(t_points: Array[float], x_values: Array[Vector
 ## the same vector, but rotated by [param angle]. [br]
 ## NOTE: [param derivative] must be a function from R to R^2. [br]
 ## NOTE: [param interval] can have second value lower than the first.
-static func bend_dirs_2D(derivative: Callable, interval: Vector2, angle: float = PI, bend_fraction: float = BEND_FRACTION) -> Array[Callable]:
+static func bend_func_2D(derivative: Callable, interval: Vector2, angle: float = PI, bend_fraction: float = BEND_FRACTION) -> Array[Callable]:
 	var int_dir_frac: float = (interval.y - interval.x) * bend_fraction
 	var bend_interval_1: Vector2 = Vector2(interval.x + int_dir_frac, interval.x)
 	var bend_interval_2: Vector2 = Vector2(interval.y - int_dir_frac, interval.y)
-	return int_bend_dirs_2D(derivative, bend_interval_1, bend_interval_2, angle)
+	return bend_func_2D_intervals(derivative, bend_interval_1, bend_interval_2, angle)
 
 ## Calculates a bend vector function and its derivative, returning them in an array in that order,
 ## so that when the bend function is added to a vector function, which has a derivative [param derivative], 
@@ -119,12 +119,12 @@ static func bend_dirs_2D(derivative: Callable, interval: Vector2, angle: float =
 ## NOTE: [param derivative] must be a function from R to R^2. [br]
 ## NOTE: [param bend_interval_1] and [param bend_interval_2] can have second value lower than the first.
 ## The bend function will have zero derivative at the first value and non-zero at the second.
-static func int_bend_dirs_2D(derivative: Callable, bend_interval_1: Vector2, bend_interval_2: Vector2, angle: float = PI) -> Array[Callable]:
+static func bend_func_2D_intervals(derivative: Callable, bend_interval_1: Vector2, bend_interval_2: Vector2, angle: float = PI) -> Array[Callable]:
 	var bend_func_1: Callable = make_bend_func_on_int(bend_interval_1)
 	var bend_func_2: Callable = make_bend_func_on_int(bend_interval_2)
 	var bend_func_deriv_1: Callable = make_bend_func_deriv_on_int(bend_interval_1)
 	var bend_func_deriv_2: Callable = make_bend_func_deriv_on_int(bend_interval_2)
-	var coefficients: Array[Vector2] = custom_bend_dirs_2D(derivative, \
+	var coefficients: Array[Vector2] = bend_func_2D_custom(derivative, \
 		bend_func_deriv_1, bend_func_deriv_2, bend_interval_1[1], bend_interval_2[1], angle)
 	var result: Array[Callable] = []
 	result.append(func (t): return coefficients[0] * bend_func_1.call(t) + coefficients[1] * bend_func_2.call(t))
@@ -145,9 +145,9 @@ static func int_bend_dirs_2D(derivative: Callable, bend_interval_1: Vector2, ben
 ## NOTE: [param derivative] must be a function from R to R^2. [br]
 ## NOTE: [param bend_derivative_1] and [param bend_derivative_2] must be a functions from R to R,
 ## such that [code]bend_derivative_1.call(bend_t_2) == 0[/code] and [code]bend_derivative_2.call(bend_t_1) == 0[/code]
-static func custom_bend_dirs_2D(derivative: Callable, bend_derivative_1: Callable, bend_derivative_2: Callable, \
+static func bend_func_2D_custom(derivative: Callable, bend_derivative_1: Callable, bend_derivative_2: Callable, \
 			bend_t_1: float, bend_t_2: float, angle: float = PI) -> Array[Vector2]:
-	return bend_2D(derivative.call(bend_t_1), derivative.call(bend_t_2), \
+	return bend_dirs_2D(derivative.call(bend_t_1), derivative.call(bend_t_2), \
 			bend_derivative_1.call(bend_t_1), bend_derivative_2.call(bend_t_2), angle)
 
 ## Calculates two [Vector2] and retuns them in an [code]array[/code], such that:
@@ -159,7 +159,7 @@ static func custom_bend_dirs_2D(derivative: Callable, bend_derivative_1: Callabl
 ## array[0].length_squared() + array[1].length_squared()
 ## [/codeblock]
 ## is minimal.
-static func bend_2D(dir_1: Vector2, dir_2: Vector2, weight_1: float, weight_2: float, angle: float = PI) -> Array[Vector2]:
+static func bend_dirs_2D(dir_1: Vector2, dir_2: Vector2, weight_1: float, weight_2: float, angle: float = PI) -> Array[Vector2]:
 	# NOTE: old code
 	#var R: Matrix = Matrix.matrix_from_rotation(angle).times_scalar(weight_1)
 	#var A: Matrix = Matrix.matrix_from_array(Array(
